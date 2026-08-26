@@ -4,8 +4,11 @@ import Dashboard from './components/Dashboard'
 import FaturaTab from './components/Fatura'
 import ConfigTab from './components/Config'
 import ProjectionTab from './components/Projecao'
+import Login from './components/Login'
 
 export default function App() {
+  const [session, setSession] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
   const [tab, setTab] = useState("home")
   const [income, setIncome] = useState([])
   const [fixed, setFixed] = useState([])
@@ -16,7 +19,18 @@ export default function App() {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    (async () => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setAuthReady(true)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (!session) return
+    setLoading(true)
+    ;(async () => {
       try {
         const [{ data: inc }, { data: fix }, { data: varData }, { data: txns }] = await Promise.all([
           supabase.from("income").select("*"),
@@ -37,7 +51,7 @@ export default function App() {
       }
       setLoading(false)
     })()
-  }, [])
+  }, [session])
 
   const saveIncome = useCallback(async (item) => {
     const { data } = await supabase.from("income").upsert({ id: item.id, name: item.name, amount: Number(item.amount), is_fixed: item.is_fixed !== false, active: true }).select()
@@ -92,6 +106,14 @@ export default function App() {
     { id: "projection", icon: "📈", label: "Projeção" },
   ]
 
+  if (!authReady) return (
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="text-center"><p className="text-4xl mb-3">💰</p><p className="text-xl text-gray-500">Carregando...</p></div>
+    </div>
+  )
+
+  if (!session) return <Login />
+
   if (loading) return (
     <div className="flex items-center justify-center h-screen bg-gray-50">
       <div className="text-center"><p className="text-4xl mb-3">💰</p><p className="text-xl text-gray-500">Carregando...</p></div>
@@ -106,9 +128,15 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <div className="bg-white border-b border-gray-100 px-5 pt-4 pb-3">
-        <h1 className="text-2xl font-bold text-gray-800">Minhas Finanças</h1>
-        <p className="text-base text-gray-400">Controle financeiro da Martha</p>
+      <div className="bg-white border-b border-gray-100 px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Minhas Finanças</h1>
+          <p className="text-base text-gray-400">Controle financeiro da Martha</p>
+        </div>
+        <button onClick={() => supabase.auth.signOut()}
+          className="text-sm font-semibold text-gray-400 hover:text-gray-600 py-2 px-3 rounded-xl">
+          Sair
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-28">
